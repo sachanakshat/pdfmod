@@ -508,7 +508,10 @@ function applyTool(fc) {
       fc.isDrawingMode = false;
       fc.selection     = true;
       fc.defaultCursor = 'default';
-      fc.forEachObject(o => { o.selectable = true; o.evented = true; });
+      fc.forEachObject(o => {
+        if (String(o.id || '').startsWith('__cover__')) return; // keep cover rects non-interactive
+        o.selectable = true; o.evented = true;
+      });
       break;
     case 'draw':
       fc.isDrawingMode = true;
@@ -629,7 +632,7 @@ async function renderPage(pageNum) {
 
   const recordHistory = () => {
     if (suppressHist) return;
-    const snap = JSON.stringify(fc.getObjects().map(o => o.toObject(['id'])));
+    const snap = JSON.stringify(fc.getObjects().map(o => o.toObject(['id', 'selectable', 'evented'])));
     histories[pi] = histories[pi].slice(0, histIdx[pi] + 1);
     histories[pi].push(snap);
     histIdx[pi] = histories[pi].length - 1;
@@ -947,7 +950,14 @@ function restoreSnapshot(fc, pageIdx) {
   }
 
   fabric.util.enlivenObjects(snapshot, objects => {
-    objects.forEach(o => fc.add(o));
+    objects.forEach(o => {
+      // Re-apply non-interactive state for cover rects after undo/redo
+      if (String(o.id || '').startsWith('__cover__')) {
+        o.selectable = false;
+        o.evented    = false;
+      }
+      fc.add(o);
+    });
     fc.renderAll();
     suppressHist = false;
   });
@@ -1092,56 +1102,83 @@ function hitPdfText(fc, ptr) {
   ) || null;
 }
 
-// Covers the original PDF text with a background-sampled image (seamless) and
-// places an editable IText with the same content on top.
+// Covers the original PDF text with a background-colored rect and places an
+// editable IText with the detected text color on top.
 function makeEditable(fc, item) {
   item.edited = true; // prevent duplicate edits on the same item
 
-  const coverX = item.left - 2,  coverY = item.top - 1;
-  const coverW = item.width + 6, coverH = item.height + 3;
+  // Generous padding so all text pixels (ascenders, descenders) are covered
+  const coverX = item.left - 4,   coverY = item.top - 3;
+  const coverW = item.width + 10, coverH = item.height + 8;
 
-  function addTextLayer() {
-    const txt = new fabric.IText(item.str, {
-      left:       item.left,
-      top:        item.top,
-      fontSize:   Math.max(item.fontSize, 6),
-      fontFamily: selFont.value || 'Helvetica',
-      fill:       '#000000',
-      selectable: true,
-      evented:    true,
-    });
-    fc.add(txt);
-    fc.setActiveObject(txt);
-    txt.enterEditing();
-    txt.selectAll();
-    fc.renderAll();
-    // Switch tool bar to select so user can interact naturally after typing
-    selectTool('select');
-  }
-
-  // Sample the background pixels at the text region so the cover is seamless
+  // Sample the rendered PDF region to detect background color and text color
   const bgEl = fc.backgroundImage && fc.backgroundImage.getElement();
+  let bgColor   = '#ffffff';
+  let textColor = '#000000';
+
   if (bgEl) {
+    const sw = Math.max(2, Math.round(coverW));
+    const sh = Math.max(2, Math.round(coverH));
     const tmp = document.createElement('canvas');
-    tmp.width  = Math.ceil(coverW);
-    tmp.height = Math.ceil(coverH);
-    tmp.getContext('2d').drawImage(bgEl, coverX, coverY, coverW, coverH, 0, 0, coverW, coverH);
-    fabric.Image.fromURL(tmp.toDataURL(), coverImg => {
-      coverImg.set({ left: coverX, top: coverY, selectable: false, evented: false });
-      fc.add(coverImg);
-      addTextLayer();
-    });
-  } else {
-    // Fallback: white box if background is not yet available
-    const bg = new fabric.Rect({
-      left: coverX, top: coverY,
-      width: coverW, height: coverH,
-      fill: '#ffffff', stroke: 'transparent',
-      selectable: false, evented: false,
-    });
-    fc.add(bg);
-    addTextLayer();
+    tmp.width = sw; tmp.height = sh;
+    const ctx = tmp.getContext('2d');
+    ctx.drawImage(bgEl, Math.round(coverX), Math.round(coverY), sw, sh, 0, 0, sw, sh);
+    const px = ctx.getImageData(0, 0, sw, sh).data;
+
+    // Background = average of the four corner pixels (least likely to contain text)
+    let br = 0, bg = 0, bb = 0;
+    const corners = [0, (sw - 1) * 4, (sh - 1) * sw * 4, ((sh - 1) * sw + sw - 1) * 4];
+    for (const ci of corners) { br += px[ci]; bg += px[ci + 1]; bb += px[ci + 2]; }
+    br = Math.round(br / 4); bg = Math.round(bg / 4); bb = Math.round(bb / 4);
+    bgColor = `rgb(${br},${bg},${bb})`;
+
+    // Text color = most common pixel that differs significantly from background
+    const bins = new Map();
+    for (let i = 0; i < px.length; i += 4) {
+      const r = px[i], g = px[i + 1], b = px[i + 2];
+      const d = Math.sqrt((r - br) ** 2 + (g - bg) ** 2 + (b - bb) ** 2);
+      if (d < 30) continue; // skip background-like pixels
+      const key = `${r >> 5},${g >> 5},${b >> 5}`; // quantize to 32-step buckets
+      const e = bins.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+      e.n++; e.r += r; e.g += g; e.b += b;
+      bins.set(key, e);
+    }
+    if (bins.size) {
+      let best = null;
+      for (const e of bins.values()) if (!best || e.n > best.n) best = e;
+      if (best) textColor = `rgb(${Math.round(best.r / best.n)},${Math.round(best.g / best.n)},${Math.round(best.b / best.n)})`;
+    }
   }
+
+  // Cover the original text with a solid rect in the detected background color.
+  // Using solid color (not background image pixels) is essential — overlaying
+  // the background image on the PDF would double-render the original text.
+  const cover = new fabric.Rect({
+    id:         '__cover__',
+    left:       coverX, top: coverY,
+    width:      coverW, height: coverH,
+    fill:       bgColor, stroke: 'transparent',
+    selectable: false, evented: false,
+  });
+  fc.add(cover);
+
+  // IText with detected color and matching font size
+  const txt = new fabric.IText(item.str, {
+    left:       item.left,
+    top:        item.top,
+    fontSize:   Math.max(item.fontSize, 6),
+    fontFamily: selFont.value || 'Helvetica',
+    fill:       textColor,
+    selectable: true,
+    evented:    true,
+  });
+  fc.add(txt);
+  fc.setActiveObject(txt);
+  txt.enterEditing();
+  txt.selectAll();
+  fc.renderAll();
+  // Switch toolbar to select so user can interact naturally after typing
+  selectTool('select');
 }
 
 // ── Toast helper ──────────────────────────────────────────────────────────────
