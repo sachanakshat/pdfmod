@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Editor</title>
+
+  <!-- UI fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- Google Fonts available in the editor text tool -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Lato:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Code+Pro:ital,wght@0,400;0,700&family=Merriweather:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Fabric.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+
+  <style>
+    :root {
+      --bg-toolbar: #111827;
+      --bg-dark:    #1f2937;
+      --bg-input:   #1f2937;
+      --accent:     #6366f1;
+      --accent-h:   #4f46e5;
+      --accent-lt:  #a5b4fc;
+      --text:       #f1f5f9;
+      --text-muted: #94a3b8;
+      --border:     #374151;
+      --hover:      #2d3748;
+      --active:     #312e81;
+      --editor-bg:  #e5e7eb;
+      --shadow:     0 4px 24px rgba(0,0,0,0.3);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--editor-bg);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      color: var(--text);
+    }
+
+    /* ── Toolbar ────────────────────────────────────────────────────────── */
+    #toolbar {
+      background: var(--bg-toolbar);
+      border-bottom: 1px solid var(--border);
+      height: 54px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px;
+      flex-shrink: 0;
+      z-index: 200;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    #toolbar::-webkit-scrollbar { height: 3px; }
+    #toolbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .tb-sep {
+      width: 1px; height: 28px;
+      background: var(--border);
+      flex-shrink: 0;
+      margin: 0 3px;
+    }
+    .tb-spacer { flex: 1; min-width: 8px; }
+
+    /* Tool buttons */
+    .tb-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      width: 34px; height: 34px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      transition: background 0.12s, color 0.12s;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .tb-btn:hover  { background: var(--hover); color: var(--text); }
+    .tb-btn.active { background: var(--active); color: var(--accent-lt); }
+    .tb-btn[title]:hover::after {
+      content: attr(title);
+      position: absolute;
+      bottom: -30px;
+      left: 50%; transform: translateX(-50%);
+      background: #0f172a;
+      color: var(--text);
+      font-size: 11px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* Text tool label */
+    .t-label { font-family: 'Times New Roman', serif; font-weight: 700; font-size: 17px; line-height: 1; }
+
+    /* Property controls */
+    .tb-select, .tb-input {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 5px;
+      font-size: 12px;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      padding: 4px 6px;
+      height: 30px;
+      flex-shrink: 0;
+    }
+    .tb-select:focus, .tb-input:focus { border-color: var(--accent); }
+    #sel-font  { width: 132px; }
+    #inp-size  { width: 48px; text-align: center; }
+    #inp-sw    { width: 44px; text-align: center; }
+    input[type=number]::-webkit-inner-spin-button { display: none; }
+    input[type=number] { -moz-appearance: textfield; }
+
+    /* Format buttons (B I U) */
+    .fmt-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      width: 26px; height: 26px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.12s;
+      flex-shrink: 0;
+    }
+    .fmt-btn:hover  { background: var(--hover); color: var(--text); }
+    .fmt-btn.active { background: var(--active); color: var(--accent-lt); border-color: var(--accent); }
+
+    /* Color inputs */
+    input[type=color] {
+      width: 28px; height: 28px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 2px;
+      background: var(--bg-input);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* Opacity slider */
+    #inp-opacity {
+      width: 72px;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    /* Action buttons */
+    .action-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 0 14px;
+      height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      display: flex; align-items: center; gap: 6px;
+      transition: background 0.12s;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .action-btn:hover    { background: var(--accent-h); }
+    .action-btn:disabled { background: #374151; cursor: not-allowed; opacity: 0.6; }
+    .action-btn.ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .action-btn.ghost:hover { background: var(--hover); }
+
+    /* Page label */
+    #lbl-pages {
+      color: var(--text-muted);
+      font-size: 12px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── Editor area ────────────────────────────────────────────────────── */
+    #editor {
+      flex: 1;
+      overflow: auto;
+      padding: 28px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      background: var(--editor-bg);
+    }
+    #editor::-webkit-scrollbar { width: 8px; }
+    #editor::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 4px; }
+
+    /* ── Drop zone ──────────────────────────────────────────────────────── */
+    #drop-zone {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      border: 2px dashed #6366f166;
+      border-radius: 14px;
+      padding: 64px 48px;
+      background: var(--bg-dark);
+      width: 100%;
+      max-width: 560px;
+      min-height: 320px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      text-align: center;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: #1e1b4b55;
+    }
+    #drop-zone .dz-icon { font-size: 52px; color: var(--accent-lt); }
+    #drop-zone h3 { font-size: 20px; font-weight: 600; color: var(--text); }
+    #drop-zone p  { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    #drop-zone .dz-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      margin-top: 4px;
+    }
+
+    /* ── Loading ────────────────────────────────────────────────────────── */
+    #loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      color: var(--text-muted);
+      padding: 60px;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Pages ──────────────────────────────────────────────────────────── */
+    #pages-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .page-wrapper {
+      position: relative;
+      box-shadow: var(--shadow);
+      cursor: default;
+      flex-shrink: 0;
+      /* width/height set by JS to match the Fabric canvas */
+    }
+
+    /* Fabric creates .canvas-container inside the wrapper */
+    .page-wrapper .canvas-container {
+      display: block !important;
+    }
+
+    /* ── Toast ──────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 22px; right: 22px;
+      background: #0f172a;
+      color: var(--text);
+      padding: 11px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transform: translateY(70px);
+      opacity: 0;
+      transition: transform 0.28s, opacity 0.28s;
+      z-index: 9999;
+      border-left: 3px solid var(--accent);
+      max-width: 340px;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── Prop groups — show/hide ────────────────────────────────────────── */
+    #grp-text   { display: none; align-items: center; gap: 5px; }
+    #grp-color  { display: flex; align-items: center; gap: 5px; }
+    #grp-stroke { display: flex; align-items: center; gap: 5px; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ TOOLBAR ═════════════════════════════════ -->
+<div id="toolbar">
+
+  <!-- Upload -->
+  <button class="action-btn ghost" id="btn-upload" title="Upload PDF">
+    <i class="fa-solid fa-upload"></i> Upload PDF
+  </button>
+  <input type="file" id="file-input" accept=".pdf" hidden />
+
+  <div class="tb-sep"></div>
+
+  <!-- Tool buttons -->
+  <button class="tb-btn active" data-tool="select"    title="Select / Move  V"><i class="fa-solid fa-arrow-pointer"></i></button>
+  <button class="tb-btn"        data-tool="text"      title="Text  T"><span class="t-label">T</span></button>
+  <button class="tb-btn"        data-tool="highlight" title="Highlight  H" style="color:#fbbf24"><i class="fa-solid fa-highlighter"></i></button>
+  <button class="tb-btn"        data-tool="rect"      title="Rectangle  R"><i class="fa-regular fa-square"></i></button>
+  <button class="tb-btn"        data-tool="circle"    title="Circle / Ellipse  C"><i class="fa-regular fa-circle"></i></button>
+  <button class="tb-btn"        data-tool="line"      title="Line  L"><i class="fa-solid fa-minus"></i></button>
+  <button class="tb-btn"        data-tool="arrow"     title="Arrow  A"><i class="fa-solid fa-arrow-right"></i></button>
+  <button class="tb-btn"        data-tool="draw"      title="Freehand Draw  D"><i class="fa-solid fa-pen"></i></button>
+  <button class="tb-btn"        data-tool="whitebox"  title="Whiteout / Redact  W"><i class="fa-solid fa-square" style="color:#e2e8f0"></i></button>
+  <button class="tb-btn"        data-tool="eraser"    title="Erase Object  E"><i class="fa-solid fa-eraser"></i></button>
+
+  <div class="tb-sep"></div>
+
+  <!-- Text properties -->
+  <div id="grp-text">
+    <select class="tb-select" id="sel-font">
+      <option>Helvetica</option>
+      <option>Arial</option>
+      <option>Times New Roman</option>
+      <option>Georgia</option>
+      <option>Courier New</option>
+      <option>Verdana</option>
+      <option>Roboto</option>
+      <option>Open Sans</option>
+      <option>Lato</option>
+      <option>Montserrat</option>
+      <option>Playfair Display</option>
+      <option>Merriweather</option>
+      <option>Source Code Pro</option>
+    </select>
+    <input type="number" class="tb-input" id="inp-size" value="18" min="6" max="288" title="Font size" />
+    <button class="fmt-btn" id="btn-bold"      title="Bold"><b>B</b></button>
+    <button class="fmt-btn" id="btn-italic"    title="Italic"><i>I</i></button>
+    <button class="fmt-btn" id="btn-underline" title="Underline"><u>U</u></button>
+    <div class="tb-sep"></div>
+  </div>
+
+  <!-- Color + opacity -->
+  <div id="grp-color">
+    <input type="color" id="inp-color"   value="#e53e3e"  title="Color / Stroke" />
+    <input type="color" id="inp-fill"    value="#ffffff"  title="Fill color" style="display:none" />
+    <input type="range" id="inp-opacity" min="10" max="100" value="100" title="Opacity" />
+  </div>
+
+  <div class="tb-sep"></div>
+
+  <!-- Stroke width -->
+  <div id="grp-stroke">
+    <label style="color:var(--text-muted);font-size:11px;white-space:nowrap">Stroke</label>
+    <input type="number" class="tb-input" id="inp-sw" value="2" min="1" max="40" title="Stroke width (px)" />
+  </div>
+
+  <div class="tb-sep"></div>
+
+  <!-- Undo / Redo / Delete -->
+  <button class="tb-btn" id="btn-undo"   title="Undo  Ctrl+Z"><i class="fa-solid fa-rotate-left"></i></button>
+  <button class="tb-btn" id="btn-redo"   title="Redo  Ctrl+Y"><i class="fa-solid fa-rotate-right"></i></button>
+  <button class="tb-btn" id="btn-delete" title="Delete selected  Del"><i class="fa-solid fa-trash" style="color:#f87171"></i></button>
+
+  <div class="tb-spacer"></div>
+
+  <!-- Page info + zoom -->
+  <span id="lbl-pages"></span>
+  <select class="tb-select" id="sel-zoom" title="Zoom" style="width:64px">
+    <option value="0.75">75%</option>
+    <option value="1" selected>100%</option>
+    <option value="1.25">125%</option>
+    <option value="1.5">150%</option>
+    <option value="2">200%</option>
+  </select>
+
+  <div class="tb-sep"></div>
+
+  <!-- Download -->
+  <button class="action-btn" id="btn-download" disabled>
+    <i class="fa-solid fa-download"></i> Download
+  </button>
+</div>
+
+<!-- ═══════════════════════════════ EDITOR ══════════════════════════════════ -->
+<main id="editor">
+  <div id="drop-zone">
+    <i class="fa-solid fa-file-pdf dz-icon"></i>
+    <h3>Open a PDF to edit</h3>
+    <p>Drag &amp; drop your file here, or click below.<br/>Supports all PDF versions and fonts.</p>
+    <button class="dz-btn" onclick="document.getElementById('file-input').click()">
+      <i class="fa-solid fa-folder-open"></i> Browse files
+    </button>
+  </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>Rendering PDF…</span>
+  </div>
+
+  <div id="pages-container"></div>
+</main>
+
+<div id="toast"></div>
+
+<!-- ═══════════════════════════════ SCRIPT ══════════════════════════════════ -->
+<script>
+'use strict';
+
+// ── PDF.js worker ────────────────────────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let sessionId   = null;
+let pageCount   = 0;
+let pdfDoc      = null;   // pdfjsLib document
+let canvases    = [];     // fabric.Canvas[] per page
+let currentTool = 'select';
+let RENDER_SCALE = 1.8;   // px per PDF point — balances quality & memory
+
+// Per-canvas drawing state (shared is safe because pages never overlap)
+let isDrawing      = false;
+let drawStart      = null;
+let activeShape    = null;
+
+// Undo stack: histories[pageIdx] = string[] of JSON snapshots
+let histories    = [];
+let histIdx      = [];
+let suppressHist = false; // prevent recording while restoring
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fileInput      = $('file-input');
+const dropZone       = $('drop-zone');
+const loadingEl      = $('loading');
+const pagesContainer = $('pages-container');
+const btnDownload    = $('btn-download');
+const lblPages       = $('lbl-pages');
+const selZoom        = $('sel-zoom');
+const selFont        = $('sel-font');
+const inpSize        = $('inp-size');
+const btnBold        = $('btn-bold');
+const btnItalic      = $('btn-italic');
+const btnUnderline   = $('btn-underline');
+const inpColor       = $('inp-color');
+const inpFill        = $('inp-fill');
+const inpOpacity     = $('inp-opacity');
+const inpSW          = $('inp-sw');
+const grpText        = $('grp-text');
+const inpFillEl      = $('inp-fill');
+
+// ── Tool selection ────────────────────────────────────────────────────────────
+document.getElementById('toolbar').addEventListener('click', e => {
+  const btn = e.target.closest('[data-tool]');
+  if (btn) selectTool(btn.dataset.tool);
+});
+
+function selectTool(tool) {
+  currentTool = tool;
+
+  // Highlight active tool button
+  document.querySelectorAll('[data-tool]').forEach(b =>
+    b.classList.toggle('active', b.dataset.tool === tool)
+  );
+
+  // Show text props only for text tool
+  grpText.style.display = tool === 'text' ? 'flex' : 'none';
+
+  // Show fill color for shapes with fill
+  const needsFill = ['rect', 'circle', 'whitebox'].includes(tool);
+  inpFillEl.style.display = needsFill ? 'inline-block' : 'none';
+
+  applyToolToAll();
+}
+
+function applyToolToAll() {
+  canvases.forEach(fc => applyTool(fc));
+}
+
+function applyTool(fc) {
+  // Reset drawing state when switching tools
+  isDrawing   = false;
+  activeShape = null;
+
+  switch (currentTool) {
+    case 'select':
+      fc.isDrawingMode = false;
+      fc.selection     = true;
+      fc.defaultCursor = 'default';
+      fc.forEachObject(o => { o.selectable = true; o.evented = true; });
+      break;
+    case 'draw':
+      fc.isDrawingMode = true;
+      fc.selection     = false;
+      fc.freeDrawingBrush.color = inpColor.value;
+      fc.freeDrawingBrush.width = Number(inpSW.value) || 2;
+      fc.defaultCursor = 'crosshair';
+      fc.forEachObject(o => { o.selectable = false; o.evented = false; });
+      break;
+    default:
+      fc.isDrawingMode = false;
+      fc.selection     = false;
+      fc.defaultCursor = 'crosshair';
+      fc.forEachObject(o => { o.selectable = false; o.evented = true; });
+  }
+  fc.renderAll();
+}
+
+// ── File upload & drag/drop ───────────────────────────────────────────────────
+$('btn-upload').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if (e.target.files[0]) load(e.target.files[0]); });
+dropZone.addEventListener('click', () => fileInput.click());
+
+const editorEl = $('editor');
+editorEl.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+editorEl.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+editorEl.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') load(f);
+  else toast('Please drop a valid PDF file', true);
+});
+
+async function load(file) {
+  dropZone.style.display  = 'none';
+  loadingEl.style.display = 'flex';
+  pagesContainer.innerHTML = '';
+  canvases = []; histories = []; histIdx = [];
+
+  try {
+    // 1. Upload to server
+    const fd = new FormData();
+    fd.append('pdf', file);
+    const up = await fetch('/api/pdf/upload', { method: 'POST', body: fd });
+    if (!up.ok) throw new Error((await up.json()).error || 'Upload failed');
+    const { sessionId: sid, pageCount: pc, fileName } = await up.json();
+    sessionId = sid;
+    pageCount = pc;
+
+    // 2. Load with pdf.js (from server, avoids CORS issues with local File blobs on some browsers)
+    pdfDoc = await pdfjsLib.getDocument(`/api/pdf/file/${sid}`).promise;
+
+    // 3. Render all pages
+    for (let i = 1; i <= pageCount; i++) {
+      $('loading').querySelector('span').textContent = `Rendering page ${i} / ${pageCount}…`;
+      await renderPage(i);
+    }
+
+    lblPages.textContent = `${pageCount} page${pageCount > 1 ? 's' : ''} · dbl-click text to edit`;
+    btnDownload.disabled = false;
+    applyToolToAll();
+    toast(`Loaded: ${fileName} (${pageCount} pages). Double-click any text in the PDF to edit it.`);
+  } catch (err) {
+    dropZone.style.display = 'flex';
+    toast('Failed to load PDF: ' + err.message, true);
+  } finally {
+    loadingEl.style.display = 'none';
+    fileInput.value = '';
+  }
+}
+
+// ── Render a single PDF page ──────────────────────────────────────────────────
+async function renderPage(pageNum) {
+  const page     = await pdfDoc.getPage(pageNum);
+  const vp       = page.getViewport({ scale: RENDER_SCALE });
+  const W        = Math.floor(vp.width);
+  const H        = Math.floor(vp.height);
+
+  // Render into an off-screen canvas
+  const tmp = document.createElement('canvas');
+  tmp.width  = W;
+  tmp.height = H;
+  await page.render({ canvasContext: tmp.getContext('2d'), viewport: vp }).promise;
+  const bgDataUrl = tmp.toDataURL('image/jpeg', 0.92); // JPEG bg keeps memory low
+
+  // Page wrapper
+  const wrapper = document.createElement('div');
+  wrapper.className = 'page-wrapper';
+  wrapper.style.width  = W + 'px';
+  wrapper.style.height = H + 'px';
+
+  // Fabric canvas element
+  const canvasEl = document.createElement('canvas');
+  wrapper.appendChild(canvasEl);
+  pagesContainer.appendChild(wrapper);
+
+  // Init Fabric canvas
+  const fc = new fabric.Canvas(canvasEl, {
+    width:  W,
+    height: H,
+    preserveObjectStacking: true,
+    enableRetinaScaling: false,
+  });
+
+  // Set PDF render as background (not an editable object)
+  fabric.Image.fromURL(bgDataUrl, img => {
+    fc.setBackgroundImage(img, fc.renderAll.bind(fc), {
+      originX: 'left', originY: 'top',
+      scaleX: 1, scaleY: 1,
+    });
+  });
+
+  // History
+  const pi = pageNum - 1;
+  histories.push(['[]']);
+  histIdx.push(0);
+
+  const recordHistory = () => {
+    if (suppressHist) return;
+    const snap = JSON.stringify(fc.getObjects().map(o => o.toObject(['id'])));
+    histories[pi] = histories[pi].slice(0, histIdx[pi] + 1);
+    histories[pi].push(snap);
+    histIdx[pi] = histories[pi].length - 1;
+  };
+  fc.on('object:added',    recordHistory);
+  fc.on('object:modified', recordHistory);
+  fc.on('object:removed',  recordHistory);
+
+  // Sync property panel when an object is selected
+  fc.on('selection:created', e => syncProps(fc, e.selected[0]));
+  fc.on('selection:updated', e => syncProps(fc, e.selected[0]));
+  fc.on('selection:cleared', () => {
+    // Restore text props visibility to current tool
+    grpText.style.display = currentTool === 'text' ? 'flex' : 'none';
+  });
+
+  // Load PDF text items for double-click-to-edit (non-blocking)
+  page.getTextContent().then(tc => {
+    fc._pdfTextItems = buildPdfTextItems(tc.items, vp);
+  }).catch(() => { fc._pdfTextItems = []; });
+
+  // Drawing event handlers
+  setupDrawing(fc);
+
+  canvases.push(fc);
+}
+
+// ── Drawing handlers ──────────────────────────────────────────────────────────
+function setupDrawing(fc) {
+  fc.on('mouse:down',     e  => onMouseDown(fc, e));
+  fc.on('mouse:move',     e  => onMouseMove(fc, e));
+  fc.on('mouse:up',       ()  => onMouseUp(fc));
+  fc.on('mouse:dblclick', e  => onDblClick(fc, e));
+}
+
+function onMouseDown(fc, e) {
+  if (currentTool === 'select' || currentTool === 'draw') return;
+
+  const ptr = fc.getPointer(e.e);
+
+  // ── Eraser: hit-test all objects and remove the topmost hit ──
+  if (currentTool === 'eraser') {
+    const objs = fc.getObjects().slice().reverse(); // topmost first
+    for (const o of objs) {
+      const b = o.getBoundingRect(true);
+      if (ptr.x >= b.left && ptr.x <= b.left + b.width &&
+          ptr.y >= b.top  && ptr.y <= b.top  + b.height) {
+        fc.remove(o);
+        fc.renderAll();
+        return;
+      }
+    }
+    return;
+  }
+
+  // ── Text: edit existing PDF text or create new text ──
+  if (currentTool === 'text') {
+    // Let fabric handle clicks on existing fabric objects
+    const target = fc.findTarget(e.e);
+    if (target) return;
+
+    // Click on existing PDF text → edit it inline
+    const pdfHit = hitPdfText(fc, ptr);
+    if (pdfHit) { makeEditable(fc, pdfHit); return; }
+
+    const t = new fabric.IText('Type here', {
+      left:       ptr.x,
+      top:        ptr.y,
+      fontFamily: selFont.value,
+      fontSize:   Number(inpSize.value) || 18,
+      fill:       inpColor.value,
+      fontWeight: btnBold.classList.contains('active')      ? 'bold'   : 'normal',
+      fontStyle:  btnItalic.classList.contains('active')    ? 'italic' : 'normal',
+      underline:  btnUnderline.classList.contains('active'),
+      opacity:    Number(inpOpacity.value) / 100,
+      selectable: true,
+      evented:    true,
+    });
+    fc.add(t);
+    fc.setActiveObject(t);
+    t.enterEditing();
+    t.selectAll();
+    fc.renderAll();
+    return;
+  }
+
+  // ── Shapes ──
+  isDrawing  = true;
+  drawStart  = { x: ptr.x, y: ptr.y };
+
+  const opacity = Number(inpOpacity.value) / 100;
+  const stroke  = inpColor.value;
+  const fill    = inpFill.value;
+  const sw      = Number(inpSW.value) || 2;
+
+  if (currentTool === 'highlight') {
+    activeShape = new fabric.Rect({
+      left: ptr.x, top: ptr.y, width: 0, height: 0,
+      fill: '#fbbf24', stroke: 'transparent', strokeWidth: 0,
+      opacity: 0.38, selectable: false, evented: false,
+    });
+  } else if (currentTool === 'whitebox') {
+    activeShape = new fabric.Rect({
+      left: ptr.x, top: ptr.y, width: 0, height: 0,
+      fill: '#ffffff', stroke: 'transparent', strokeWidth: 0,
+      opacity: 1, selectable: false, evented: false,
+    });
+  } else if (currentTool === 'rect') {
+    activeShape = new fabric.Rect({
+      left: ptr.x, top: ptr.y, width: 0, height: 0,
+      stroke, strokeWidth: sw,
+      fill: needsFill() ? fill : 'transparent',
+      opacity, selectable: false, evented: false,
+    });
+  } else if (currentTool === 'circle') {
+    activeShape = new fabric.Ellipse({
+      left: ptr.x, top: ptr.y, rx: 0, ry: 0,
+      stroke, strokeWidth: sw,
+      fill: needsFill() ? fill : 'transparent',
+      opacity, selectable: false, evented: false,
+    });
+  } else if (currentTool === 'line') {
+    activeShape = new fabric.Line([ptr.x, ptr.y, ptr.x, ptr.y], {
+      stroke, strokeWidth: sw, opacity,
+      selectable: false, evented: false,
+    });
+  } else if (currentTool === 'arrow') {
+    // Arrow = line + small triangle head (drawn as a group on mouse:up)
+    activeShape = new fabric.Line([ptr.x, ptr.y, ptr.x, ptr.y], {
+      stroke, strokeWidth: sw, opacity,
+      selectable: false, evented: false,
+    });
+  }
+
+  if (activeShape) fc.add(activeShape);
+}
+
+function onMouseMove(fc, e) {
+  // Show text cursor when hovering over editable PDF text
+  if (!isDrawing && (currentTool === 'select' || currentTool === 'text')) {
+    const ptr = fc.getPointer(e.e);
+    const hit = hitPdfText(fc, ptr);
+    fc.upperCanvasEl.style.cursor = hit ? 'text' : '';
+  }
+
+  if (!isDrawing || !activeShape) return;
+  const ptr = fc.getPointer(e.e);
+  const dx  = ptr.x - drawStart.x;
+  const dy  = ptr.y - drawStart.y;
+
+  if (currentTool === 'rect' || currentTool === 'highlight' || currentTool === 'whitebox') {
+    activeShape.set({
+      left:   dx < 0 ? ptr.x : drawStart.x,
+      top:    dy < 0 ? ptr.y : drawStart.y,
+      width:  Math.abs(dx),
+      height: Math.abs(dy),
+    });
+  } else if (currentTool === 'circle') {
+    activeShape.set({
+      left: dx < 0 ? ptr.x : drawStart.x,
+      top:  dy < 0 ? ptr.y : drawStart.y,
+      rx:   Math.abs(dx) / 2,
+      ry:   Math.abs(dy) / 2,
+    });
+  } else if (currentTool === 'line' || currentTool === 'arrow') {
+    activeShape.set({ x2: ptr.x, y2: ptr.y });
+  }
+
+  fc.renderAll();
+}
+
+function onMouseUp(fc) {
+  if (!isDrawing) return;
+  isDrawing = false;
+
+  if (activeShape) {
+    // For arrow: add arrowhead triangle
+    if (currentTool === 'arrow') {
+      const line  = activeShape;
+      const angle = Math.atan2(line.y2 - line.y1, line.x2 - line.x1) * 180 / Math.PI;
+      const head  = new fabric.Triangle({
+        left:   line.x2, top: line.y2,
+        width:  14, height: 14,
+        fill:   line.stroke,
+        opacity: line.opacity,
+        originX: 'center', originY: 'center',
+        angle:  angle + 90,
+        selectable: false, evented: false,
+      });
+      fc.add(head);
+      // Group line + head
+      const grp = new fabric.Group([line, head], { selectable: true, evented: true });
+      fc.remove(line, head);
+      fc.add(grp);
+      fc.setActiveObject(grp);
+    } else {
+      activeShape.set({ selectable: true, evented: true });
+      fc.setActiveObject(activeShape);
+    }
+    activeShape = null;
+  }
+
+  fc.renderAll();
+}
+
+function needsFill() {
+  return ['rect', 'circle'].includes(currentTool);
+}
+
+function onDblClick(fc, e) {
+  if (currentTool !== 'select') return;
+  const fTarget = fc.findTarget(e.e);
+  if (fTarget) return; // let fabric handle dblclick on its own objects
+  const ptr = fc.getPointer(e.e);
+  const hit = hitPdfText(fc, ptr);
+  if (hit) makeEditable(fc, hit);
+}
+
+// ── Sync property panel from selected object ──────────────────────────────────
+function syncProps(fc, obj) {
+  if (!obj) return;
+
+  const isText = obj.type === 'i-text' || obj.type === 'textbox';
+  grpText.style.display = isText ? 'flex' : 'none';
+
+  if (isText) {
+    selFont.value    = obj.fontFamily || 'Helvetica';
+    inpSize.value    = obj.fontSize   || 18;
+    btnBold.classList.toggle('active',      obj.fontWeight === 'bold');
+    btnItalic.classList.toggle('active',    obj.fontStyle === 'italic');
+    btnUnderline.classList.toggle('active', !!obj.underline);
+    if (obj.fill) inpColor.value = obj.fill;
+  } else {
+    if (obj.stroke && obj.stroke !== 'transparent') inpColor.value = obj.stroke;
+    if (obj.fill   && obj.fill   !== 'transparent') inpFill.value  = obj.fill;
+  }
+  inpOpacity.value = Math.round((obj.opacity ?? 1) * 100);
+}
+
+// ── Property changes propagate to selected objects ────────────────────────────
+function forActiveObjects(fn) {
+  canvases.forEach(fc => {
+    const objs = fc.getActiveObjects();
+    if (!objs.length) return;
+    objs.forEach(fn);
+    fc.renderAll();
+  });
+}
+
+selFont.addEventListener('change',   () => forActiveObjects(o => { if (isTextObj(o)) o.set('fontFamily', selFont.value); }));
+inpSize.addEventListener('input',    () => forActiveObjects(o => { if (isTextObj(o)) o.set('fontSize',   Number(inpSize.value)); }));
+btnBold.addEventListener('click',    () => { btnBold.classList.toggle('active');      forActiveObjects(o => { if (isTextObj(o)) o.set('fontWeight', btnBold.classList.contains('active') ? 'bold' : 'normal'); }); });
+btnItalic.addEventListener('click',  () => { btnItalic.classList.toggle('active');    forActiveObjects(o => { if (isTextObj(o)) o.set('fontStyle',  btnItalic.classList.contains('active') ? 'italic' : 'normal'); }); });
+btnUnderline.addEventListener('click',() => { btnUnderline.classList.toggle('active'); forActiveObjects(o => { if (isTextObj(o)) o.set('underline', btnUnderline.classList.contains('active')); }); });
+
+inpColor.addEventListener('input', () => {
+  canvases.forEach(fc => {
+    if (currentTool === 'draw') fc.freeDrawingBrush.color = inpColor.value;
+    const objs = fc.getActiveObjects();
+    objs.forEach(o => isTextObj(o) ? o.set('fill', inpColor.value) : o.set('stroke', inpColor.value));
+    if (objs.length) fc.renderAll();
+  });
+});
+
+inpFill.addEventListener('input', () => {
+  forActiveObjects(o => { if (!isTextObj(o)) o.set('fill', inpFill.value); });
+});
+
+inpOpacity.addEventListener('input', () => {
+  const v = Number(inpOpacity.value) / 100;
+  forActiveObjects(o => o.set('opacity', v));
+});
+
+inpSW.addEventListener('input', () => {
+  const v = Number(inpSW.value) || 2;
+  canvases.forEach(fc => {
+    if (currentTool === 'draw') fc.freeDrawingBrush.width = v;
+    const objs = fc.getActiveObjects();
+    objs.forEach(o => o.set('strokeWidth', v));
+    if (objs.length) fc.renderAll();
+  });
+});
+
+function isTextObj(o) {
+  return o.type === 'i-text' || o.type === 'textbox';
+}
+
+// ── Undo / Redo ───────────────────────────────────────────────────────────────
+$('btn-undo').addEventListener('click', undo);
+$('btn-redo').addEventListener('click', redo);
+
+function undo() {
+  canvases.forEach((fc, i) => {
+    if (histIdx[i] > 0) { histIdx[i]--; restoreSnapshot(fc, i); }
+  });
+}
+
+function redo() {
+  canvases.forEach((fc, i) => {
+    if (histIdx[i] < histories[i].length - 1) { histIdx[i]++; restoreSnapshot(fc, i); }
+  });
+}
+
+function restoreSnapshot(fc, pageIdx) {
+  suppressHist = true;
+  const snapshot = JSON.parse(histories[pageIdx][histIdx[pageIdx]]);
+
+  // Remove all current objects
+  fc.getObjects().slice().forEach(o => fc.remove(o));
+
+  if (snapshot.length === 0) {
+    fc.renderAll();
+    suppressHist = false;
+    return;
+  }
+
+  fabric.util.enlivenObjects(snapshot, objects => {
+    objects.forEach(o => fc.add(o));
+    fc.renderAll();
+    suppressHist = false;
+  });
+}
+
+// ── Delete selected ───────────────────────────────────────────────────────────
+$('btn-delete').addEventListener('click', deleteSelected);
+
+function deleteSelected() {
+  canvases.forEach(fc => {
+    const active = fc.getActiveObjects();
+    if (!active.length) return;
+    active.forEach(o => fc.remove(o));
+    fc.discardActiveObject();
+    fc.renderAll();
+  });
+}
+
+// ── Zoom (CSS scale — preserves edits) ───────────────────────────────────────
+selZoom.addEventListener('change', () => {
+  const z = selZoom.value;
+  pagesContainer.style.transform       = `scale(${z})`;
+  pagesContainer.style.transformOrigin = 'top center';
+  // Adjust container height so editor scroll still works
+  const box = pagesContainer.getBoundingClientRect();
+  pagesContainer.style.marginBottom = ((parseFloat(z) - 1) * box.height / parseFloat(z)) + 'px';
+});
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
+
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if (e.key === 'z' &&  e.shiftKey) { e.preventDefault(); redo(); return; }
+    if (e.key === 'y')                { e.preventDefault(); redo(); return; }
+  }
+
+  if (!typing) {
+    const map = { v:'select', t:'text', h:'highlight', r:'rect',
+                  c:'circle', l:'line', a:'arrow',     d:'draw',
+                  w:'whitebox', e:'eraser' };
+    if (map[e.key.toLowerCase()]) selectTool(map[e.key.toLowerCase()]);
+    if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+  }
+});
+
+// ── Download / Export ─────────────────────────────────────────────────────────
+btnDownload.addEventListener('click', exportPDF);
+
+async function exportPDF() {
+  if (!sessionId) return;
+
+  btnDownload.disabled   = true;
+  btnDownload.innerHTML  = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…';
+
+  try {
+    const pages = {};
+
+    for (let i = 0; i < canvases.length; i++) {
+      const fc = canvases[i];
+      if (fc.getObjects().length === 0) continue; // skip untouched pages
+
+      // Export only the annotation layer (remove background temporarily)
+      const savedBg       = fc.backgroundImage;
+      fc.backgroundImage  = null;
+      fc.renderAll();
+      const dataUrl       = fc.toDataURL({ format: 'png', multiplier: 1 });
+      fc.backgroundImage  = savedBg;
+      fc.renderAll();
+
+      pages[String(i + 1)] = dataUrl;
+    }
+
+    if (Object.keys(pages).length === 0) {
+      toast('No annotations to save — make some edits first.');
+      return;
+    }
+
+    const res = await fetch('/api/pdf/export', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ sessionId, pages }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Server error ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: 'edited.pdf' });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast('PDF downloaded successfully!');
+  } catch (err) {
+    toast('Export failed: ' + err.message, true);
+  } finally {
+    btnDownload.disabled  = false;
+    btnDownload.innerHTML = '<i class="fa-solid fa-download"></i> Download';
+  }
+}
+
+// ── PDF text editing helpers ────────────────────────────────────────────────────
+// Converts pdf.js text items → canvas-space hit rectangles.
+// Uses viewport.convertToViewportPoint so it works for any page rotation/scale.
+function buildPdfTextItems(items, vp) {
+  const out = [];
+  for (const it of items) {
+    try {
+      if (!it.str.trim()) continue;
+      // Font size in PDF points: use vertical scale component of the text matrix
+      const fsPt = Math.abs(it.transform[3]) || Math.hypot(it.transform[0], it.transform[1]);
+      if (fsPt < 0.5) continue; // invisible micro-text
+      const [cx, cy] = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
+      const fsPx = fsPt * RENDER_SCALE;
+      out.push({
+        str:    it.str,
+        left:   cx,
+        top:    cy - fsPx * 0.82,      // cy = baseline; subtract ascent to get visual top
+        width:  Math.max(it.width * RENDER_SCALE, fsPx * 0.25),
+        height: fsPx * 1.05,
+        fontSize: fsPx,
+        edited: false,
+      });
+    } catch { /* skip malformed items */ }
+  }
+  return out;
+}
+
+// Returns the first unedited PDF text item whose bounds contain ptr, or null.
+function hitPdfText(fc, ptr) {
+  const pad = 5;
+  return (fc._pdfTextItems || []).find(it =>
+    !it.edited &&
+    ptr.x >= it.left  - pad && ptr.x <= it.left  + it.width  + pad &&
+    ptr.y >= it.top   - pad && ptr.y <= it.top   + it.height + pad
+  ) || null;
+}
+
+// Covers the original PDF text with a white rect and places an editable IText
+// with the same content, position and approximate font size on top.
+function makeEditable(fc, item) {
+  item.edited = true; // prevent duplicate edits on the same item
+
+  // White box hides the original rendered text
+  const bg = new fabric.Rect({
+    left: item.left - 2,  top: item.top - 1,
+    width:  item.width  + 6,
+    height: item.height + 3,
+    fill: '#ffffff', stroke: 'transparent',
+    selectable: false, evented: false,
+  });
+
+  // IText with the original string — user edits this
+  const txt = new fabric.IText(item.str, {
+    left:       item.left,
+    top:        item.top,
+    fontSize:   Math.max(item.fontSize, 6),
+    fontFamily: selFont.value || 'Helvetica',
+    fill:       '#000000',
+    selectable: true,
+    evented:    true,
+  });
+
+  fc.add(bg);
+  fc.add(txt);
+  fc.setActiveObject(txt);
+  txt.enterEditing();
+  txt.selectAll();
+  fc.renderAll();
+
+  // Switch tool bar to select so user can interact naturally after typing
+  selectTool('select');
+}
+
+// ── Toast helper ──────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, isError = false) {
+  const el = $('toast');
+  el.textContent          = msg;
+  el.style.borderLeftColor = isError ? '#f87171' : 'var(--accent)';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
