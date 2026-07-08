@@ -1092,40 +1092,56 @@ function hitPdfText(fc, ptr) {
   ) || null;
 }
 
-// Covers the original PDF text with a white rect and places an editable IText
-// with the same content, position and approximate font size on top.
+// Covers the original PDF text with a background-sampled image (seamless) and
+// places an editable IText with the same content on top.
 function makeEditable(fc, item) {
   item.edited = true; // prevent duplicate edits on the same item
 
-  // White box hides the original rendered text
-  const bg = new fabric.Rect({
-    left: item.left - 2,  top: item.top - 1,
-    width:  item.width  + 6,
-    height: item.height + 3,
-    fill: '#ffffff', stroke: 'transparent',
-    selectable: false, evented: false,
-  });
+  const coverX = item.left - 2,  coverY = item.top - 1;
+  const coverW = item.width + 6, coverH = item.height + 3;
 
-  // IText with the original string — user edits this
-  const txt = new fabric.IText(item.str, {
-    left:       item.left,
-    top:        item.top,
-    fontSize:   Math.max(item.fontSize, 6),
-    fontFamily: selFont.value || 'Helvetica',
-    fill:       '#000000',
-    selectable: true,
-    evented:    true,
-  });
+  function addTextLayer() {
+    const txt = new fabric.IText(item.str, {
+      left:       item.left,
+      top:        item.top,
+      fontSize:   Math.max(item.fontSize, 6),
+      fontFamily: selFont.value || 'Helvetica',
+      fill:       '#000000',
+      selectable: true,
+      evented:    true,
+    });
+    fc.add(txt);
+    fc.setActiveObject(txt);
+    txt.enterEditing();
+    txt.selectAll();
+    fc.renderAll();
+    // Switch tool bar to select so user can interact naturally after typing
+    selectTool('select');
+  }
 
-  fc.add(bg);
-  fc.add(txt);
-  fc.setActiveObject(txt);
-  txt.enterEditing();
-  txt.selectAll();
-  fc.renderAll();
-
-  // Switch tool bar to select so user can interact naturally after typing
-  selectTool('select');
+  // Sample the background pixels at the text region so the cover is seamless
+  const bgEl = fc.backgroundImage && fc.backgroundImage.getElement();
+  if (bgEl) {
+    const tmp = document.createElement('canvas');
+    tmp.width  = Math.ceil(coverW);
+    tmp.height = Math.ceil(coverH);
+    tmp.getContext('2d').drawImage(bgEl, coverX, coverY, coverW, coverH, 0, 0, coverW, coverH);
+    fabric.Image.fromURL(tmp.toDataURL(), coverImg => {
+      coverImg.set({ left: coverX, top: coverY, selectable: false, evented: false });
+      fc.add(coverImg);
+      addTextLayer();
+    });
+  } else {
+    // Fallback: white box if background is not yet available
+    const bg = new fabric.Rect({
+      left: coverX, top: coverY,
+      width: coverW, height: coverH,
+      fill: '#ffffff', stroke: 'transparent',
+      selectable: false, evented: false,
+    });
+    fc.add(bg);
+    addTextLayer();
+  }
 }
 
 // ── Toast helper ──────────────────────────────────────────────────────────────
