@@ -1021,12 +1021,21 @@ async function exportPDF() {
       const fc = canvases[i];
       if (fc.getObjects().length === 0) continue; // skip untouched pages
 
-      // Export only the annotation layer (remove background temporarily)
-      const savedBg       = fc.backgroundImage;
-      fc.backgroundImage  = null;
+      // Export only the annotation layer (remove background temporarily).
+      // Cover rects are invisible during editing (opacity 0) — reveal them now
+      // so they hide the original PDF text in the exported overlay.
+      const savedBg = fc.backgroundImage;
+      fc.getObjects().forEach(o => {
+        if (String(o.id || '').startsWith('__cover__')) o.set('opacity', 1);
+      });
+      fc.backgroundImage = null;
       fc.renderAll();
-      const dataUrl       = fc.toDataURL({ format: 'png', multiplier: 1 });
-      fc.backgroundImage  = savedBg;
+      const dataUrl = fc.toDataURL({ format: 'png', multiplier: 1 });
+      // Restore state
+      fc.getObjects().forEach(o => {
+        if (String(o.id || '').startsWith('__cover__')) o.set('opacity', 0);
+      });
+      fc.backgroundImage = savedBg;
       fc.renderAll();
 
       pages[String(i + 1)] = dataUrl;
@@ -1111,7 +1120,9 @@ function makeEditable(fc, item) {
   const coverX = item.left - 4,   coverY = item.top - 3;
   const coverW = item.width + 10, coverH = item.height + 8;
 
-  // Sample the rendered PDF region to detect background color and text color
+  // Sample the rendered PDF region to detect background color and text color.
+  // Uses mode-based detection (most-common pixel = background) which is robust
+  // against corner pixels accidentally landing on text.
   const bgEl = fc.backgroundImage && fc.backgroundImage.getElement();
   let bgColor   = '#ffffff';
   let textColor = '#000000';
@@ -1125,39 +1136,41 @@ function makeEditable(fc, item) {
     ctx.drawImage(bgEl, Math.round(coverX), Math.round(coverY), sw, sh, 0, 0, sw, sh);
     const px = ctx.getImageData(0, 0, sw, sh).data;
 
-    // Background = average of the four corner pixels (least likely to contain text)
-    let br = 0, bg = 0, bb = 0;
-    const corners = [0, (sw - 1) * 4, (sh - 1) * sw * 4, ((sh - 1) * sw + sw - 1) * 4];
-    for (const ci of corners) { br += px[ci]; bg += px[ci + 1]; bb += px[ci + 2]; }
-    br = Math.round(br / 4); bg = Math.round(bg / 4); bb = Math.round(bb / 4);
-    bgColor = `rgb(${br},${bg},${bb})`;
-
-    // Text color = most common pixel that differs significantly from background
+    // Bucket all pixels with 16-step quantization
     const bins = new Map();
     for (let i = 0; i < px.length; i += 4) {
-      const r = px[i], g = px[i + 1], b = px[i + 2];
-      const d = Math.sqrt((r - br) ** 2 + (g - bg) ** 2 + (b - bb) ** 2);
-      if (d < 30) continue; // skip background-like pixels
-      const key = `${r >> 5},${g >> 5},${b >> 5}`; // quantize to 32-step buckets
+      const key = `${px[i] >> 4},${px[i+1] >> 4},${px[i+2] >> 4}`;
       const e = bins.get(key) || { n: 0, r: 0, g: 0, b: 0 };
-      e.n++; e.r += r; e.g += g; e.b += b;
+      e.n++; e.r += px[i]; e.g += px[i+1]; e.b += px[i+2];
       bins.set(key, e);
     }
-    if (bins.size) {
-      let best = null;
-      for (const e of bins.values()) if (!best || e.n > best.n) best = e;
-      if (best) textColor = `rgb(${Math.round(best.r / best.n)},${Math.round(best.g / best.n)},${Math.round(best.b / best.n)})`;
+    const sorted = [...bins.values()].sort((a, b) => b.n - a.n);
+
+    // Most common bucket = background color
+    if (sorted.length > 0) {
+      const bg = sorted[0];
+      const bgR = Math.round(bg.r / bg.n), bgG = Math.round(bg.g / bg.n), bgB = Math.round(bg.b / bg.n);
+      bgColor = `rgb(${bgR},${bgG},${bgB})`;
+
+      // Most common bucket significantly different from background = text color
+      for (const entry of sorted.slice(1)) {
+        const eR = Math.round(entry.r / entry.n), eG = Math.round(entry.g / entry.n), eB = Math.round(entry.b / entry.n);
+        const d = Math.sqrt((eR - bgR) ** 2 + (eG - bgG) ** 2 + (eB - bgB) ** 2);
+        if (d >= 40) { textColor = `rgb(${eR},${eG},${eB})`; break; }
+      }
     }
   }
 
-  // Cover the original text with a solid rect in the detected background color.
-  // Using solid color (not background image pixels) is essential — overlaying
-  // the background image on the PDF would double-render the original text.
+  // Cover rect is INVISIBLE during editing (opacity 0) so the new IText text is
+  // always clearly visible regardless of background color detection accuracy.
+  // It is made opaque (opacity 1) only when rendering the export PNG so that
+  // the original PDF text is hidden in the final downloaded file.
   const cover = new fabric.Rect({
     id:         '__cover__',
     left:       coverX, top: coverY,
     width:      coverW, height: coverH,
     fill:       bgColor, stroke: 'transparent',
+    opacity:    0,          // hidden during editing; revealed at export time
     selectable: false, evented: false,
   });
   fc.add(cover);
