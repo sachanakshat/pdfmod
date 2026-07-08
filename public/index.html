@@ -1021,20 +1021,11 @@ async function exportPDF() {
       const fc = canvases[i];
       if (fc.getObjects().length === 0) continue; // skip untouched pages
 
-      // Export only the annotation layer (remove background temporarily).
-      // Cover rects are invisible during editing (opacity 0) — reveal them now
-      // so they hide the original PDF text in the exported overlay.
-      const savedBg = fc.backgroundImage;
-      fc.getObjects().forEach(o => {
-        if (String(o.id || '').startsWith('__cover__')) o.set('opacity', 1);
-      });
+      // Export only the annotation layer (remove background temporarily)
+      const savedBg      = fc.backgroundImage;
       fc.backgroundImage = null;
       fc.renderAll();
-      const dataUrl = fc.toDataURL({ format: 'png', multiplier: 1 });
-      // Restore state
-      fc.getObjects().forEach(o => {
-        if (String(o.id || '').startsWith('__cover__')) o.set('opacity', 0);
-      });
+      const dataUrl      = fc.toDataURL({ format: 'png', multiplier: 1 });
       fc.backgroundImage = savedBg;
       fc.renderAll();
 
@@ -1161,16 +1152,14 @@ function makeEditable(fc, item) {
     }
   }
 
-  // Cover rect is INVISIBLE during editing (opacity 0) so the new IText text is
-  // always clearly visible regardless of background color detection accuracy.
-  // It is made opaque (opacity 1) only when rendering the export PNG so that
-  // the original PDF text is hidden in the final downloaded file.
+  // Cover rect is visible during editing — bgColor (mode-based detection) matches
+  // the PDF background so the original text is hidden and only the new IText shows.
   const cover = new fabric.Rect({
     id:         '__cover__',
     left:       coverX, top: coverY,
     width:      coverW, height: coverH,
     fill:       bgColor, stroke: 'transparent',
-    opacity:    0,          // hidden during editing; revealed at export time
+    opacity:    1,
     selectable: false, evented: false,
   });
   fc.add(cover);
@@ -1182,9 +1171,20 @@ function makeEditable(fc, item) {
     fontSize:   Math.max(item.fontSize, 6),
     fontFamily: selFont.value || 'Helvetica',
     fill:       textColor,
+    padding:    4,        // larger hit area for easier re-selection
     selectable: true,
     evented:    true,
   });
+
+  // Fabric's enterEditing() sets selectable=false internally and restores it
+  // via originalSelectable on exitEditing(). Guarantee re-selectability by
+  // setting selectable=true explicitly when editing exits.
+  txt.on('editing:exited', () => {
+    txt.selectable = true;
+    txt.evented    = true;
+    fc.renderAll();
+  });
+
   fc.add(txt);
   fc.setActiveObject(txt);
   txt.enterEditing();
