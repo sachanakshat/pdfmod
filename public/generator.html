@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rapido Bill Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-toolbar: #111827;
+      --bg-dark:    #1f2937;
+      --bg-input:   #1f2937;
+      --accent:     #6366f1;
+      --accent-h:   #4f46e5;
+      --text:       #f1f5f9;
+      --text-muted: #94a3b8;
+      --border:     #374151;
+      --hover:      #2d3748;
+      --editor-bg:  #e5e7eb;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--editor-bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      color: var(--text);
+    }
+
+    /* ── Nav ── */
+    #nav {
+      background: var(--bg-toolbar);
+      border-bottom: 1px solid var(--border);
+      height: 54px;
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 6px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    #nav .brand { font-weight: 600; font-size: 14px; color: var(--text); margin-right: 16px; }
+    .nav-tab {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      color: var(--text-muted);
+      transition: background 0.12s, color 0.12s;
+    }
+    .nav-tab:hover { background: var(--hover); color: var(--text); }
+    .nav-tab.active { background: var(--accent); color: #fff; }
+
+    /* ── Layout ── */
+    #main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Form panel ── */
+    #form-panel {
+      width: 380px;
+      flex-shrink: 0;
+      background: var(--bg-dark);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 20px 18px 40px;
+    }
+    #form-panel::-webkit-scrollbar { width: 6px; }
+    #form-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin: 20px 0 10px;
+    }
+    .section-title:first-of-type { margin-top: 0; }
+
+    .field { margin-bottom: 12px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .field input, .field textarea, .field select {
+      width: 100%;
+      background: #111827;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color 0.12s;
+    }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+    .field textarea { resize: vertical; min-height: 60px; }
+    .field select option { background: #111827; }
+
+    .field-row { display: flex; gap: 8px; }
+    .field-row .field { flex: 1; }
+
+    .auto-field { display: flex; gap: 6px; align-items: flex-end; }
+    .auto-field .field { flex: 1; margin-bottom: 0; }
+    .regen-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      width: 32px; height: 34px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+      transition: all 0.12s;
+    }
+    .regen-btn:hover { background: var(--hover); color: var(--text); border-color: var(--accent); }
+
+    #btn-generate {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 11px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      margin-top: 22px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background 0.12s;
+    }
+    #btn-generate:hover { background: var(--accent-h); }
+    #btn-generate:disabled { background: #374151; cursor: not-allowed; opacity: 0.7; }
+
+    .fare-breakdown {
+      background: #111827;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      line-height: 1.8;
+    }
+    .fare-breakdown span { color: var(--text); font-weight: 500; float: right; }
+
+    /* ── Preview panel ── */
+    #preview-panel {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--editor-bg);
+    }
+    #preview-panel::-webkit-scrollbar { width: 8px; }
+    #preview-panel::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 4px; }
+    #preview-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 16px;
+      align-self: flex-start;
+    }
+
+    /* ── Receipt template ── */
+    #receipt {
+      width: 600px;
+      background: #ffffff;
+      padding: 34px 44px 28px;
+      font-family: 'Inter', sans-serif;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+      border-radius: 4px;
+    }
+    .rc-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 5px;
+      line-height: 1.3;
+    }
+    .rc-date {
+      font-size: 12px;
+      color: #777777;
+      margin-bottom: 18px;
+    }
+    .rc-hr {
+      border: none;
+      border-top: 1px solid #d8d8d8;
+      margin: 0 -44px 20px;
+      width: calc(100% + 88px);
+    }
+    /* Card */
+    .rc-card {
+      border: 1px solid #d4d4d4;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .rc-card-header {
+      background: #1E7F87;
+      padding: 11px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .rc-card-header .rc-header-label {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+    .rc-card-header .rc-header-value {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .rc-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .rc-row:last-of-type { border-bottom: none; }
+    .rc-row .rc-lbl {
+      font-size: 12.5px;
+      color: #555555;
+    }
+    .rc-row .rc-val {
+      font-size: 12.5px;
+      color: #111111;
+      font-weight: 500;
+      text-align: right;
+    }
+    .rc-separator { border: none; border-top: 1px solid #e0e0e0; }
+    .rc-final-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 11px 16px;
+    }
+    .rc-final-row .rc-lbl {
+      font-size: 13px;
+      font-weight: 600;
+      color: #222222;
+    }
+    .rc-final-row .rc-val {
+      font-size: 13px;
+      font-weight: 700;
+      color: #222222;
+    }
+    /* Driver name bold */
+    .rc-val-bold { font-weight: 700 !important; color: #111111 !important; }
+
+    /* Address section */
+    .rc-addr-section {
+      padding: 12px 16px 14px;
+    }
+    .rc-addr-block { display: flex; gap: 12px; align-items: flex-start; }
+    .rc-dot {
+      width: 13px; height: 13px;
+      background: #222222;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .rc-addr-content { flex: 1; }
+    .rc-addr-time {
+      font-size: 12px;
+      font-weight: 600;
+      color: #222222;
+    }
+    .rc-addr-text {
+      font-size: 11.5px;
+      color: #666666;
+      margin-top: 3px;
+      line-height: 1.5;
+    }
+    .rc-connector {
+      margin: 5px 0 5px 5px;
+      width: 3px;
+      height: 22px;
+      border-left: 2px dashed #b0b0b0;
+    }
+    .rc-footer {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #e8e8e8;
+    }
+    .rc-footer p {
+      font-size: 10px;
+      color: #999999;
+      font-style: italic;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ Navigation ═══ -->
+<nav id="nav">
+  <span class="brand"><i class="fa-solid fa-file-pdf" style="color:#6366f1;margin-right:6px;"></i>PDF Tools</span>
+  <a class="nav-tab" href="/"><i class="fa-solid fa-pen-to-square" style="margin-right:5px;"></i>PDF Editor</a>
+  <a class="nav-tab active" href="/generator.html"><i class="fa-solid fa-receipt" style="margin-right:5px;"></i>Rapido Generator</a>
+</nav>
+
+<!-- ═══ Main ═══ -->
+<div id="main">
+
+  <!-- ── Form Panel ── -->
+  <div id="form-panel">
+
+    <div class="section-title">Fare Details</div>
+
+    <div class="field">
+      <label>Total Amount (₹)</label>
+      <input type="number" id="inp-total" value="66" min="30" max="9999" placeholder="e.g. 264" />
+    </div>
+    <div id="fare-breakdown-box" class="fare-breakdown" style="display:none;"></div>
+
+    <div class="section-title">Receipt Info</div>
+
+    <div class="field">
+      <label>Recipient Name</label>
+      <input type="text" id="inp-recipient" value="AKSHAT" placeholder="e.g. AKSHAT" />
+    </div>
+
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="inp-date" />
+    </div>
+
+    <div class="section-title">Trip Times</div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Pickup Time</label>
+        <input type="time" id="inp-time1" value="09:05" />
+      </div>
+      <div class="field">
+        <label>Drop Time</label>
+        <input type="time" id="inp-time2" value="09:55" />
+      </div>
+    </div>
+
+    <div class="section-title">Addresses</div>
+
+    <div class="field">
+      <label>Pickup Address</label>
+      <textarea id="inp-addr1" rows="3" placeholder="Full pickup address...">120209 Wing 12 Sobha dream acres, Balagere, Bengaluru, Karnataka 560087, India</textarea>
+    </div>
+
+    <div class="field">
+      <label>Drop Address</label>
+      <textarea id="inp-addr2" rows="3" placeholder="Full drop address...">HPE next to DNR Casablanca, B Narayanapura, Mahadevapura, Bengaluru, Karnataka, India</textarea>
+    </div>
+
+    <div class="section-title">Auto-generated Fields</div>
+
+    <div class="auto-field" style="margin-bottom:12px;">
+      <div class="field">
+        <label>Driver Name</label>
+        <input type="text" id="inp-driver" readonly />
+      </div>
+      <button class="regen-btn" onclick="regenDriver()" title="Regenerate"><i class="fa-solid fa-rotate"></i></button>
+    </div>
+
+    <div class="auto-field" style="margin-bottom:12px;">
+      <div class="field">
+        <label>Ride ID</label>
+        <input type="text" id="inp-rideid" readonly />
+      </div>
+      <button class="regen-btn" onclick="regenRideId()" title="Regenerate"><i class="fa-solid fa-rotate"></i></button>
+    </div>
+
+    <div class="auto-field" style="margin-bottom:12px;">
+      <div class="field">
+        <label>License Plate</label>
+        <input type="text" id="inp-plate" readonly />
+      </div>
+      <button class="regen-btn" onclick="regenPlate()" title="Regenerate"><i class="fa-solid fa-rotate"></i></button>
+    </div>
+
+    <button id="btn-generate" onclick="generatePDF()">
+      <i class="fa-solid fa-download"></i> Generate PDF
+    </button>
+
+  </div><!-- /form-panel -->
+
+  <!-- ── Preview Panel ── -->
+  <div id="preview-panel">
+    <div id="preview-label">Live Preview — <span style="color:#9ca3af;font-weight:400;text-transform:none;letter-spacing:0;">updates as you type</span></div>
+
+    <!-- ═══ RECEIPT TEMPLATE ═══ -->
+    <div id="receipt">
+
+      <!-- Header -->
+      <div class="rc-title">Hi <span id="rt-recipient">AKSHAT</span>! Here is your driver receipt.</div>
+      <div class="rc-date" id="rt-date">Thu, 24 Apr, 2025</div>
+      <hr class="rc-hr" />
+
+      <!-- Payment Details Card -->
+      <div class="rc-card">
+        <div class="rc-card-header">
+          <span class="rc-header-label">Payment Details</span>
+          <span class="rc-header-value">₹<span id="rt-total">66</span></span>
+        </div>
+        <div class="rc-row">
+          <span class="rc-lbl">Base Fare</span>
+          <span class="rc-val">₹<span id="rt-base">30.00</span></span>
+        </div>
+        <div class="rc-row">
+          <span class="rc-lbl">Distance Fare</span>
+          <span class="rc-val">₹<span id="rt-distance">15.82</span></span>
+        </div>
+        <div class="rc-row">
+          <span class="rc-lbl">Pickup Charges</span>
+          <span class="rc-val">₹10</span>
+        </div>
+        <div class="rc-row" style="border-bottom:none;">
+          <span class="rc-lbl">Driver Addition**</span>
+          <span class="rc-val">₹<span id="rt-da">10</span></span>
+        </div>
+        <hr class="rc-separator" />
+        <div class="rc-final-row">
+          <span class="rc-lbl">Final Amount Paid</span>
+          <span class="rc-val">₹<span id="rt-total2">66</span></span>
+        </div>
+      </div>
+
+      <!-- Ride Details Card -->
+      <div class="rc-card">
+        <div class="rc-card-header">
+          <span class="rc-header-label">Ride Details</span>
+          <span class="rc-header-value" style="font-weight:400;font-size:12px;">RideID: <span id="rt-rideid">vMUVtARv66</span></span>
+        </div>
+        <div class="rc-row">
+          <span class="rc-lbl">Driver Name</span>
+          <span class="rc-val rc-val-bold" id="rt-driver">BABU SUBHEDAR</span>
+        </div>
+        <div class="rc-row" style="border-bottom:none;">
+          <span class="rc-lbl">License Plate</span>
+          <span class="rc-val" id="rt-plate">KA53B6703</span>
+        </div>
+        <!-- Address section inside card -->
+        <hr class="rc-separator" />
+        <div class="rc-addr-section">
+          <div class="rc-addr-block">
+            <div class="rc-dot"></div>
+            <div class="rc-addr-content">
+              <div class="rc-addr-time" id="rt-time1">02:05 PM</div>
+              <div class="rc-addr-text" id="rt-addr1">XPFM+486, Pavani Sarovar Internal Rd, Nallurhalli, Whitefield, Nallurhalli, Bengaluru, Karnataka 560066, India</div>
+            </div>
+          </div>
+          <div class="rc-connector"></div>
+          <div class="rc-addr-block">
+            <div class="rc-dot"></div>
+            <div class="rc-addr-content">
+              <div class="rc-addr-time" id="rt-time2">02:12 PM</div>
+              <div class="rc-addr-text" id="rt-addr2">Sigmoid, Road Number 9, EPIP Zone, Whitefield, Bengaluru, Karnataka, India</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="rc-footer">
+        <p>**Drivers may optionally request 10% of base fare (rounded to nearest Rs.10) to cover other factors like traffic, chances of return trip etc.</p>
+      </div>
+    </div><!-- /receipt -->
+  </div><!-- /preview-panel -->
+
+</div><!-- /main -->
+
+<script>
+'use strict';
+
+// ── Driver Name Data ──────────────────────────────────────────────────────────
+const FIRST_NAMES = [
+  'RAVI','SURESH','MAHESH','RAMESH','GANESH','NAGARAJ','SRINIVAS','PRAVEEN',
+  'ARUN','VIJAY','MOHAN','RAJESH','SANTOSH','SUNIL','KIRAN','ASHOK','DEEPAK',
+  'VINAY','SHANKAR','PRASAD','SHIVA','KRISHNA','VENKAT','LAKSHMAN','MANJUNATH',
+  'BASAVARAJ','GOPAL','NAVEEN','DINESH','RAKESH','HARISH','GIRISH','MANOJ',
+  'SANJAY','AJAY','ANAND','BALAJI','ARJUN','PRADEEP','SATHISH','RANJITH',
+  'NAGESH','UMESH','LOKESH','JAGADEESH','NAGENDRA','VEERESH','SATISH',
+  'NARASIMHA','SELVAM','KARTHIK','VIGNESH','SENTHIL','MURUGAN','RAGHAVENDRA',
+  'CHANDRASHEKHAR','SHIVARAJ','THIMMAIAH','LINGARAJ','PRABHAKAR','GURURAJ',
+  'SOMASHEKAR','SUBRAMANIAM','RAJENDRAN','BALACHANDRAN','SURYANARAYANA',
+  'PADMANABHA','VENKATESH','SIDDHARAJU','HANUMANTHA','NARENDAR','SOMU',
+  'ABDUL','MOHAMMED','IMRAN','NAZIM','SADIQ','FAROOQ','SALEEM','BABU',
+  'ROHIT','NIKHIL','AKSHAY','ARUNKUMAR','YASHWANTH','DHANANJAY','VARUN',
+  'SUDHIR','GIRISH','RAJU','CHANDRA','LAXMIKANT','PRASHANT','SHRIKANT',
+  'TUKARAM','SHALEEM','JAVED','RAFEEQ','MANSOOR','SHAHID','AZIZ'
+];
+const LAST_NAMES = [
+  'KUMAR','REDDY','GOWDA','NAIK','RAO','SHARMA','SINGH','PATIL','HEGDE',
+  'NAIR','SHETTY','KAMATH','PATEL','JOSHI','KULKARNI','PILLAI','VERMA',
+  'GUPTA','MISHRA','SUBHEDAR','JADHAV','DESAI','BHAT','IYER','KRISHNAN',
+  'MURUGESAN','JALEEL','KHAN','ANSARI','PASHA','VELUCHAMY','PANDEY',
+  'TIWARI','AGGARWAL','DUBEY','YADAV','SHUKLA','SRIVASTAVA','SAXENA',
+  'SWAMY','CHETTY','MUDALIAR','RAJU','BABU','POOJARY','BANGERA','DEVADIGA',
+  'UTHAPPA','SAGAR','NAIDU','PILLAI','MENON','UNNIKRISHNAN','NAMBIAR'
+];
+const SINGLE_NAMES = [
+  'MANJUNATHA','VENKATESHA','NARASIMHAIAH','CHANDRAPPA','THIMMEGOWDA',
+  'BASAPPA','HANUMANTHAPPA','MALLESH','LINGAPPA','SIDDAPPA','RAMAPPA',
+  'VENKATARAJU','ANJANEYALU','RAMAKRISHNA','SHIVASWAMY','LAKSHMINARAYANA'
+];
+
+function randItem(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function randChar(str) { return str[Math.floor(Math.random() * str.length)]; }
+
+function generateDriverName() {
+  const roll = Math.random();
+  if (roll < 0.12) return randItem(SINGLE_NAMES);
+  if (roll < 0.22) return `${randItem(FIRST_NAMES)} ${randChar('ABCDEFGHIJKLMNOPQRSTUVWXYZ')}`;
+  return `${randItem(FIRST_NAMES)} ${randItem(LAST_NAMES)}`;
+}
+
+// ── Ride ID ───────────────────────────────────────────────────────────────────
+// Pattern observed: [lower][UPPER×3][lower][UPPER×2][lower][digit×2]  e.g. vMUVtARv66
+function generateRideId() {
+  const L = 'abcdefghijklmnopqrstuvwxyz';
+  const U = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const D = '0123456789';
+  return randChar(L)+randChar(U)+randChar(U)+randChar(U)+
+         randChar(L)+randChar(U)+randChar(U)+randChar(L)+
+         randChar(D)+randChar(D);
+}
+
+// ── License Plate ─────────────────────────────────────────────────────────────
+// Format: KA(01|02|03|53)[1-2 letters][4 digits]
+function generatePlate() {
+  const districts = ['01','02','03','53'];
+  const U = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const dist = randItem(districts);
+  const letters = Math.random() > 0.45 ? randChar(U)+randChar(U) : randChar(U);
+  const num = Math.floor(Math.random() * 8999) + 1000;
+  return `KA${dist}${letters}${num}`;
+}
+
+// ── Fare Calculation ──────────────────────────────────────────────────────────
+function calculateFares(totalInput) {
+  const total = Math.max(30, parseInt(totalInput) || 66);
+  const pickup = 10;
+
+  // Driver Addition: optional, 10% of base rounded to nearest 10, min ₹10
+  let da;
+  const r = Math.random();
+  if (total <= 80)       da = 10;
+  else if (total <= 160) da = r < 0.55 ? 10 : 20;
+  else if (total <= 260) da = r < 0.40 ? 10 : 20;
+  else                   da = r < 0.22 ? 10 : r < 0.65 ? 20 : 30;
+
+  const available = total - pickup - da;
+  if (available <= 0) { da = 0; }
+  const avail = total - pickup - da;
+
+  // Base fare: ~88-90% of available for larger fares, ~65% for small
+  const ratio = avail < 60 ? 0.64 : 0.89;
+  let base = Math.round(avail * ratio / 10) * 10;
+  base = Math.max(20, base);
+
+  // Distance fare: remainder with a realistic decimal suffix
+  const distInt = avail - base;
+  const distDecimals = [0.20, 0.32, 0.40, 0.50, 0.60, 0.68, 0.80, 0.82, 0.86, 0.92, 0.96];
+  const dec = randItem(distDecimals);
+  const distanceFare = (Math.max(4, distInt) + dec).toFixed(2);
+
+  return { base: base.toFixed(2), distance: distanceFare, da, total };
+}
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  const days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}, ${d.getFullYear()}`;
+}
+
+function formatTime(timeStr) {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 || 12;
+  return `${String(hr).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let currentFares = {};
+
+function regenDriver()  { $('inp-driver').value  = generateDriverName(); updatePreview(); }
+function regenRideId()  { $('inp-rideid').value  = generateRideId();     updatePreview(); }
+function regenPlate()   { $('inp-plate').value   = generatePlate();      updatePreview(); }
+
+// ── Update preview ────────────────────────────────────────────────────────────
+function updatePreview() {
+  const total = parseInt($('inp-total').value) || 66;
+  // Only recalc fares if total changed
+  if (!currentFares.total || currentFares.total !== total) {
+    currentFares = calculateFares(total);
+  }
+
+  // Fare fields
+  $('rt-total').textContent  = currentFares.total;
+  $('rt-total2').textContent = currentFares.total;
+  $('rt-base').textContent   = currentFares.base;
+  $('rt-distance').textContent = currentFares.distance;
+  $('rt-da').textContent     = currentFares.da;
+
+  // Fare breakdown box in form
+  const bb = $('fare-breakdown-box');
+  bb.style.display = 'block';
+  bb.innerHTML = `
+    Base Fare <span>₹${currentFares.base}</span><br>
+    Distance Fare <span>₹${currentFares.distance}</span><br>
+    Pickup Charges <span>₹10</span><br>
+    Driver Addition** <span>₹${currentFares.da}</span>
+  `;
+
+  // Date
+  const dateStr = $('inp-date').value;
+  $('rt-date').textContent = dateStr ? formatDate(dateStr) : 'Select a date';
+
+  // Recipient
+  $('rt-recipient').textContent = ($('inp-recipient').value || 'AKSHAT').toUpperCase();
+
+  // Times
+  $('rt-time1').textContent = formatTime($('inp-time1').value);
+  $('rt-time2').textContent = formatTime($('inp-time2').value);
+
+  // Addresses
+  $('rt-addr1').textContent = $('inp-addr1').value || '';
+  $('rt-addr2').textContent = $('inp-addr2').value || '';
+
+  // Auto-generated
+  $('rt-driver').textContent = $('inp-driver').value || '';
+  $('rt-rideid').textContent = $('inp-rideid').value || '';
+  $('rt-plate').textContent  = $('inp-plate').value  || '';
+}
+
+// ── Event listeners ───────────────────────────────────────────────────────────
+$('inp-total').addEventListener('input', () => {
+  currentFares = {}; // force recalc
+  updatePreview();
+});
+['inp-date','inp-recipient','inp-time1','inp-time2',
+ 'inp-addr1','inp-addr2'].forEach(id => {
+  $(id).addEventListener('input', updatePreview);
+});
+
+// ── PDF Generation ────────────────────────────────────────────────────────────
+async function generatePDF() {
+  const btn = $('btn-generate');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating…';
+
+  try {
+    // Wait a tick so the preview is fully rendered
+    await new Promise(r => setTimeout(r, 80));
+
+    const receiptEl = $('receipt');
+    const canvas = await html2canvas(receiptEl, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: '#ffffff',
+      logging: false,
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const { jsPDF } = window.jspdf;
+
+    // A4 dimensions in pt
+    const pageW = 595.28, pageH = 841.89;
+    const imgW  = pageW;
+    const imgH  = (canvas.height / canvas.width) * imgW;
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH);
+
+    const dateStr  = $('inp-date').value || 'receipt';
+    const total    = $('inp-total').value || '0';
+    const filename = `rapido-receipt-${dateStr}-rs${total}.pdf`;
+    pdf.save(filename);
+  } catch (err) {
+    alert('PDF generation failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-download"></i> Generate PDF';
+  }
+}
+
+// ── Initialise ────────────────────────────────────────────────────────────────
+function init() {
+  // Set today's date as default
+  const today = new Date().toISOString().split('T')[0];
+  $('inp-date').value = today;
+
+  // Generate auto fields
+  $('inp-driver').value = generateDriverName();
+  $('inp-rideid').value = generateRideId();
+  $('inp-plate').value  = generatePlate();
+
+  updatePreview();
+}
+
+init();
+</script>
+</body>
+</html>
