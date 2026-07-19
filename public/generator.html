@@ -215,7 +215,7 @@
       margin-bottom: 18px;
     }
     .rc-card-header {
-      background: #38B2AC;
+      background: #CAD3DC;
       padding: 13px 18px;
       display: flex;
       justify-content: space-between;
@@ -224,12 +224,12 @@
     .rc-card-header .rc-header-label {
       font-size: 14.5px;
       font-weight: 700;
-      color: #ffffff;
+      color: #3E7A38;
     }
     .rc-card-header .rc-header-value {
       font-size: 13px;
       font-weight: 400;
-      color: #ffffff;
+      color: #3E7A38;
     }
     .rc-row {
       display: flex;
@@ -273,6 +273,7 @@
     /* Address section */
     .rc-addr-section {
       padding: 14px 18px 18px;
+      background: #ffffff;
     }
     .rc-addr-block { display: flex; gap: 14px; align-items: flex-start; }
     .rc-dot {
@@ -421,7 +422,7 @@
       <div class="rc-card">
         <div class="rc-card-header">
           <span class="rc-header-label">Payment Details</span>
-          <span style="font-size:15px;font-weight:700;color:#ffffff;">₹<span id="rt-total">66</span></span>
+          <span style="font-size:15px;font-weight:700;color:#3E7A38;">₹<span id="rt-total">66</span></span>
         </div>
         <div class="rc-row">
           <span class="rc-lbl">Base Fare</span>
@@ -435,14 +436,14 @@
           <span class="rc-lbl">Pickup Charges</span>
           <span class="rc-val">₹10</span>
         </div>
-        <div class="rc-row" style="border-bottom:none;">
+        <div class="rc-row" style="border-bottom:none; padding-bottom:22px;">
           <span class="rc-lbl">Driver Addition**</span>
           <span class="rc-val">₹<span id="rt-da">10</span></span>
         </div>
         <hr class="rc-separator" />
         <div class="rc-final-row">
-          <span class="rc-final-row rc-lbl">Final Amount Paid</span>
-          <span class="rc-final-row rc-val">₹<span id="rt-total2">66</span></span>
+          <span class="rc-lbl" style="font-size:14px;font-weight:700;color:#111111;">Final Amount Paid</span>
+          <span class="rc-val" style="font-size:14px;font-weight:700;color:#111111;">₹<span id="rt-total2">66</span></span>
         </div>
       </div>
 
@@ -450,13 +451,13 @@
       <div class="rc-card">
         <div class="rc-card-header">
           <span class="rc-header-label">Ride Details</span>
-          <span style="font-size:12.5px;font-weight:400;color:#ffffff;">RideID: <span id="rt-rideid">vMUVtARv66</span></span>
+          <span style="font-size:12.5px;font-weight:400;color:#3E7A38;">RideID: <span id="rt-rideid">vMUVtARv66</span></span>
         </div>
-        <div class="rc-row">
+        <div class="rc-row" style="background:#ffffff;">
           <span class="rc-lbl">Driver Name</span>
           <span class="rc-val rc-val-bold" id="rt-driver">BABU SUBHEDAR</span>
         </div>
-        <div class="rc-row" style="border-bottom:none;">
+        <div class="rc-row" style="border-bottom:none; background:#ffffff;">
           <span class="rc-lbl">License Plate</span>
           <span class="rc-val" id="rt-plate">KA53B6703</span>
         </div>
