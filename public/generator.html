@@ -235,14 +235,13 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 13px 18px;
-      border-bottom: 1px solid #eeeeee;
+      padding: 14px 18px;
+      background: #F7F8FA;   /* no border-bottom — fare rows flow as seamless block */
     }
-    .rc-row:last-of-type { border-bottom: none; }
     .rc-row .rc-lbl {
       font-size: 13px;
       color: #555555;
-      font-weight: 400;
+      font-weight: 700;
     }
     .rc-row .rc-val {
       font-size: 13px;
@@ -250,12 +249,14 @@
       font-weight: 400;
       text-align: right;
     }
-    .rc-separator { border: none; border-top: 1px solid #dddddd; }
+    /* Partial-width separator before Final Amount — matches original */
+    .rc-separator { border: none; border-top: 1px solid #C8CDD5; margin: 0 18px; }
     .rc-final-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 14px 18px;
+      padding: 16px 18px;
+      background: #FFFFFF;
     }
     .rc-final-row .rc-lbl {
       font-size: 14px;
@@ -453,13 +454,13 @@
       <div class="rc-card">
         <div class="rc-card-header">
           <span class="rc-header-label">Ride Details</span>
-          <span style="font-size:12.5px;font-weight:400;color:#3E7A38;">RideID: <span id="rt-rideid">vMUVtARv66</span></span>
+          <span style="font-size:12.5px;font-weight:700;color:#3E7A38;">RideID: <span id="rt-rideid">vMUVtARv66</span></span>
         </div>
-        <div class="rc-row" style="background:#ffffff;">
+        <div class="rc-row" style="background:#ffffff; border-bottom:1px solid #E0E4E8;">
           <span class="rc-lbl">Driver Name</span>
           <span class="rc-val rc-val-bold" id="rt-driver">BABU SUBHEDAR</span>
         </div>
-        <div class="rc-row" style="border-bottom:none; background:#ffffff;">
+        <div class="rc-row" style="background:#ffffff;">
           <span class="rc-lbl">License Plate</span>
           <span class="rc-val" id="rt-plate">KA53B6703</span>
         </div>
