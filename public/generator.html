@@ -316,6 +316,36 @@
       font-style: italic;
       line-height: 1.6;
     }
+
+    /* ── Multi-bill management ── */
+    #bills-list { margin-bottom: 8px; }
+    .bill-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border-radius: 6px; cursor: pointer;
+      margin-bottom: 4px; background: #111827;
+      border: 1px solid var(--border); transition: all 0.12s;
+    }
+    .bill-item:hover { background: var(--hover); }
+    .bill-item.active { background: #1a2540; border-color: var(--accent); }
+    .bill-item-num  { font-size: 12px; font-weight: 600; color: var(--text); flex: 1; }
+    .bill-item-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .bill-del-btn {
+      background: transparent; border: none; color: var(--text-muted);
+      font-size: 16px; line-height: 1; cursor: pointer; padding: 0;
+      width: 20px; height: 20px; display: flex; align-items: center;
+      justify-content: center; border-radius: 3px; flex-shrink: 0; transition: all 0.12s;
+    }
+    .bill-del-btn:hover { background: #3d1515; color: #f87171; }
+    #btn-add-bill {
+      width: 100%; background: transparent;
+      border: 1px dashed var(--border); color: var(--text-muted);
+      padding: 8px; border-radius: 6px; cursor: pointer;
+      font-size: 12px; font-family: 'Inter', sans-serif;
+      margin-bottom: 12px; transition: all 0.12s;
+    }
+    #btn-add-bill:hover { border-color: var(--accent); color: var(--accent); }
+    .bills-divider { border: none; border-top: 1px solid var(--border); margin: 4px 0 14px; }
+    .editing-label { font-size: 11px; font-weight: 600; color: var(--accent-lt); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; display: block; }
   </style>
 </head>
 <body>
@@ -332,6 +362,15 @@
 
   <!-- ── Form Panel ── -->
   <div id="form-panel">
+
+    <!-- Bills list — click to switch, × to delete -->
+    <div class="section-title" style="margin-top:0;">Bills</div>
+    <div id="bills-list"></div>
+    <button id="btn-add-bill" onclick="addBill()">
+      <i class="fa-solid fa-plus" style="margin-right:5px;"></i>Add Another Bill
+    </button>
+    <hr class="bills-divider" />
+    <span class="editing-label">Editing — <span id="active-bill-label">Bill 1</span></span>
 
     <div class="section-title">Fare Details</div>
 
@@ -405,7 +444,7 @@
     </div>
 
     <button id="btn-generate" onclick="generatePDF()">
-      <i class="fa-solid fa-download"></i> Generate PDF
+      <i class="fa-solid fa-download"></i> <span id="gen-btn-label">Generate PDF</span>
     </button>
 
   </div><!-- /form-panel -->
@@ -613,57 +652,111 @@ function formatTime(timeStr) {
 // ── DOM helpers ───────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// ── Multi-bill state ──────────────────────────────────────────────────────────
+let bills = [];
+let activeBillIndex = 0;
 let currentFares = {};
 
-function regenDriver()  { $('inp-driver').value  = generateDriverName(); updatePreview(); }
-function regenRideId()  { $('inp-rideid').value  = generateRideId();     updatePreview(); }
-function regenPlate()   { $('inp-plate').value   = generatePlate();      updatePreview(); }
+function createBill() {
+  const today = new Date().toISOString().split('T')[0];
+  return {
+    id: Date.now() + Math.random(),
+    total: 66, recipient: 'AKSHAT', date: today,
+    time1: '09:05', time2: '09:55',
+    addr1: '120209 Wing 12 Sobha dream acres, Balagere, Bengaluru, Karnataka 560087, India',
+    addr2: 'HPE next to DNR Casablanca, B Narayanapura, Mahadevapura, Bengaluru, Karnataka, India',
+    driver: generateDriverName(), rideid: generateRideId(), plate: generatePlate(), fares: null,
+  };
+}
 
-// ── Update preview ────────────────────────────────────────────────────────────
-function updatePreview() {
+function renderBillIntoReceipt(bill) {
+  const f = bill.fares || calculateFares(bill.total);
+  $('rt-total').textContent    = bill.total;
+  $('rt-total2').textContent   = bill.total;
+  $('rt-base').textContent     = f.base;
+  $('rt-distance').textContent = f.distance;
+  $('rt-da').textContent       = f.da;
+  $('rt-recipient').textContent = (bill.recipient || 'AKSHAT').toUpperCase();
+  $('rt-date').textContent     = bill.date ? formatDate(bill.date) : 'Select a date';
+  $('rt-time1').textContent    = formatTime(bill.time1);
+  $('rt-time2').textContent    = formatTime(bill.time2);
+  $('rt-addr1').textContent    = bill.addr1 || '';
+  $('rt-addr2').textContent    = bill.addr2 || '';
+  $('rt-driver').textContent   = bill.driver || '';
+  $('rt-rideid').textContent   = bill.rideid || '';
+  $('rt-plate').textContent    = bill.plate  || '';
+}
+
+function renderBillsList() {
+  $('bills-list').innerHTML = bills.map((b, i) => {
+    const meta = (b.date ? formatDate(b.date) : '-') + ' · Rs.' + (b.total || 0);
+    return '<div class="bill-item ' + (i === activeBillIndex ? 'active' : '') + '" onclick="switchBill(' + i + ')">' +
+      '<span class="bill-item-num">Bill ' + (i + 1) + '</span>' +
+      '<span class="bill-item-meta">' + meta + '</span>' +
+      (bills.length > 1 ? '<button class="bill-del-btn" onclick="event.stopPropagation();deleteBill(' + i + ')" title="Remove">&times;</button>' : '') +
+      '</div>';
+  }).join('');
+  $('active-bill-label').textContent = 'Bill ' + (activeBillIndex + 1);
+  $('gen-btn-label').textContent = bills.length > 1
+    ? 'Generate Combined PDF (' + bills.length + ' bills)'
+    : 'Generate PDF';
+}
+
+function saveCurrentBill() {
+  const b = bills[activeBillIndex]; if (!b) return;
   const total = parseInt($('inp-total').value) || 66;
-  // Only recalc fares if total changed
-  if (!currentFares.total || currentFares.total !== total) {
-    currentFares = calculateFares(total);
-  }
+  b.total = total; b.recipient = $('inp-recipient').value || 'AKSHAT';
+  b.date  = $('inp-date').value;
+  b.time1 = $('inp-time1').value; b.time2 = $('inp-time2').value;
+  b.addr1 = $('inp-addr1').value; b.addr2 = $('inp-addr2').value;
+  b.driver = $('inp-driver').value; b.rideid = $('inp-rideid').value; b.plate = $('inp-plate').value;
+  if (!currentFares.total || currentFares.total !== total) currentFares = calculateFares(total);
+  b.fares = currentFares;
+}
 
-  // Fare fields
-  $('rt-total').textContent  = currentFares.total;
-  $('rt-total2').textContent = currentFares.total;
-  $('rt-base').textContent   = currentFares.base;
-  $('rt-distance').textContent = currentFares.distance;
-  $('rt-da').textContent     = currentFares.da;
+function loadBillIntoForm(idx) {
+  const b = bills[idx];
+  $('inp-total').value = b.total; $('inp-recipient').value = b.recipient;
+  $('inp-date').value  = b.date;
+  $('inp-time1').value = b.time1; $('inp-time2').value = b.time2;
+  $('inp-addr1').value = b.addr1; $('inp-addr2').value = b.addr2;
+  $('inp-driver').value = b.driver; $('inp-rideid').value = b.rideid; $('inp-plate').value = b.plate;
+  currentFares = b.fares || {};
+}
 
-  // Fare breakdown box in form
+function switchBill(idx) {
+  saveCurrentBill(); activeBillIndex = idx;
+  loadBillIntoForm(idx); renderBillsList(); updatePreview();
+}
+
+function addBill() {
+  saveCurrentBill(); bills.push(createBill()); switchBill(bills.length - 1);
+}
+
+function deleteBill(idx) {
+  if (bills.length <= 1) return;
+  bills.splice(idx, 1);
+  if (activeBillIndex >= bills.length) activeBillIndex = bills.length - 1;
+  loadBillIntoForm(activeBillIndex); renderBillsList(); updatePreview();
+}
+
+// ── State (legacy single-bill) ────────────────────────────────────────────────
+// currentFares already declared above in multi-bill state
+
+function regenDriver()  { saveCurrentBill(); $('inp-driver').value = generateDriverName(); updatePreview(); }
+function regenRideId()  { saveCurrentBill(); $('inp-rideid').value = generateRideId();     updatePreview(); }
+function regenPlate()   { saveCurrentBill(); $('inp-plate').value  = generatePlate();      updatePreview(); }
+
+// ── Update preview ───────────────────────────────────────────────────────────────────────────────
+function updatePreview() {
+  saveCurrentBill();
+  const b = bills[activeBillIndex];
+  renderBillIntoReceipt(b);
+  renderBillsList();
+  const f = b.fares;
   const bb = $('fare-breakdown-box');
   bb.style.display = 'block';
-  bb.innerHTML = `
-    Base Fare <span>₹${currentFares.base}</span><br>
-    Distance Fare <span>₹${currentFares.distance}</span><br>
-    Pickup Charges <span>₹10</span><br>
-    Driver Addition** <span>₹${currentFares.da}</span>
-  `;
-
-  // Date
-  const dateStr = $('inp-date').value;
-  $('rt-date').textContent = dateStr ? formatDate(dateStr) : 'Select a date';
-
-  // Recipient
-  $('rt-recipient').textContent = ($('inp-recipient').value || 'AKSHAT').toUpperCase();
-
-  // Times
-  $('rt-time1').textContent = formatTime($('inp-time1').value);
-  $('rt-time2').textContent = formatTime($('inp-time2').value);
-
-  // Addresses
-  $('rt-addr1').textContent = $('inp-addr1').value || '';
-  $('rt-addr2').textContent = $('inp-addr2').value || '';
-
-  // Auto-generated
-  $('rt-driver').textContent = $('inp-driver').value || '';
-  $('rt-rideid').textContent = $('inp-rideid').value || '';
-  $('rt-plate').textContent  = $('inp-plate').value  || '';
+  bb.innerHTML = 'Base Fare <span>Rs.' + f.base + '</span><br>Distance Fare <span>Rs.' + f.distance + '</span><br>Pickup Charges <span>Rs.10</span><br>Driver Addition** <span>Rs.' + f.da + '</span>';
 }
 
 // ── Event listeners ───────────────────────────────────────────────────────────
@@ -678,58 +771,44 @@ $('inp-total').addEventListener('input', () => {
 
 // ── PDF Generation ────────────────────────────────────────────────────────────
 async function generatePDF() {
+  saveCurrentBill();
   const btn = $('btn-generate');
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating…';
-
   try {
-    // Wait a tick so the preview is fully rendered
-    await new Promise(r => setTimeout(r, 80));
-
-    const receiptEl = $('receipt');
-    const canvas = await html2canvas(receiptEl, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: '#ffffff',
-      logging: false,
-    });
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.94);
     const { jsPDF } = window.jspdf;
-
-    // A4 dimensions in pt
-    const pageW = 595.28, pageH = 841.89;
-
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-    // Match original: content fills full page width with no extra margin
-    const imgW = pageW;
-    const imgH = (canvas.height / canvas.width) * imgW;
-    pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH);
-
-    const dateStr  = $('inp-date').value || 'receipt';
-    const total    = $('inp-total').value || '0';
-    const filename = `rapido-receipt-${dateStr}-rs${total}.pdf`;
-    pdf.save(filename);
+    const pdf  = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const pageW = 595.28;
+    const receiptEl = $('receipt');
+    for (let i = 0; i < bills.length; i++) {
+      renderBillIntoReceipt(bills[i]);
+      await new Promise(r => setTimeout(r, 100));
+      const canvas  = await html2canvas(receiptEl, { scale:2, useCORS:true, allowTaint:false, backgroundColor:'#ffffff', logging:false });
+      const imgData = canvas.toDataURL('image/jpeg', 0.94);
+      const imgH    = (canvas.height / canvas.width) * pageW;
+      if (i > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageW, imgH);
+    }
+    renderBillIntoReceipt(bills[activeBillIndex]);
+    const fname = bills.length > 1
+      ? 'rapido-receipts-combined-' + bills.length + 'bills.pdf'
+      : 'rapido-receipt-' + (bills[0].date || 'receipt') + '-rs' + bills[0].total + '.pdf';
+    pdf.save(fname);
   } catch (err) {
     alert('PDF generation failed: ' + err.message);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-download"></i> Generate PDF';
+    const lbl = bills.length > 1 ? 'Generate Combined PDF (' + bills.length + ' bills)' : 'Generate PDF';
+    btn.innerHTML = '<i class="fa-solid fa-download"></i> <span id="gen-btn-label">' + lbl + '</span>';
   }
 }
 
 // ── Initialise ────────────────────────────────────────────────────────────────
 function init() {
-  // Set today's date as default
-  const today = new Date().toISOString().split('T')[0];
-  $('inp-date').value = today;
-
-  // Generate auto fields
-  $('inp-driver').value = generateDriverName();
-  $('inp-rideid').value = generateRideId();
-  $('inp-plate').value  = generatePlate();
-
+  bills = [createBill()];
+  activeBillIndex = 0;
+  loadBillIntoForm(0);
+  renderBillsList();
   updatePreview();
 }
 
