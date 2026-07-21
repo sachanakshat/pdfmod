@@ -276,13 +276,15 @@
       background: #ffffff;
     }
     .rc-addr-block { display: flex; gap: 14px; align-items: flex-start; }
+    /* Pickup dot = green, dropoff dot = red — matches original Rapido receipt */
     .rc-dot {
       width: 16px; height: 16px;
-      background: #2d3748;
       border-radius: 50%;
       flex-shrink: 0;
       margin-top: 1px;
     }
+    .rc-dot-pickup  { background: #4CAF50; }
+    .rc-dot-dropoff { background: #F44336; }
     .rc-addr-content { flex: 1; }
     .rc-addr-time {
       font-size: 13px;
@@ -291,7 +293,7 @@
     }
     .rc-addr-text {
       font-size: 12px;
-      color: #555555;
+      color: #374151;
       margin-top: 4px;
       line-height: 1.55;
     }
@@ -465,7 +467,7 @@
         <hr class="rc-separator" />
         <div class="rc-addr-section">
           <div class="rc-addr-block">
-            <div class="rc-dot"></div>
+            <div class="rc-dot rc-dot-pickup"></div>
             <div class="rc-addr-content">
               <div class="rc-addr-time" id="rt-time1">02:05 PM</div>
               <div class="rc-addr-text" id="rt-addr1">XPFM+486, Pavani Sarovar Internal Rd, Nallurhalli, Whitefield, Nallurhalli, Bengaluru, Karnataka 560066, India</div>
@@ -473,7 +475,7 @@
           </div>
           <div class="rc-connector"></div>
           <div class="rc-addr-block">
-            <div class="rc-dot"></div>
+            <div class="rc-dot rc-dot-dropoff"></div>
             <div class="rc-addr-content">
               <div class="rc-addr-time" id="rt-time2">02:12 PM</div>
               <div class="rc-addr-text" id="rt-addr2">Sigmoid, Road Number 9, EPIP Zone, Whitefield, Bengaluru, Karnataka, India</div>
